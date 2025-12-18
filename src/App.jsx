@@ -1,279 +1,164 @@
 import { useEffect, useState } from "react";
 
-/* ===================== CONFIGURAÇÃO ===================== */
+const STORAGE_LINHAS = "ow_linhas";
+const STORAGE_HIST = "ow_historico";
 
-const APP_NAME = "Manutenção e Controle – Sala de Válvulas OW";
-const PREVENTIVA_VALIDADE_MS = 1000 * 60 * 60 * 24 * 548; // 18 meses
-const STORAGE_KEY = "ow_valvulas_estado";
-const HIST_KEY = "ow_valvulas_historico";
-const HIST_PASSWORD = "0608";
-
-const STATUS = {
-  RED: "#ef4444",
-  GREEN: "#22c55e",
-  YELLOW: "#eab308",
-  ORANGE: "#fb923c",
+const LINHAS_CONFIG = {
+  512: 175,
+  513: 175,
+  514: 72,
 };
-
-const SUBCONJUNTOS = {
-  512: ["V1", "V2", "V3", "V5", "V6", "V7", "V8"],
-  513: ["V1", "V2", "V3", "V4", "V5", "V6", "V7"],
-};
-
-/* ===================== HELPERS ===================== */
-
-const gerarValvulas = (linha) => {
-  const total = linha === 514 ? 72 : 175;
-  return Array.from({ length: total }, (_, i) => ({
-    numero: i + 1,
-    preventivaData: null,
-    corretivas: [],
-    subconjuntos:
-      linha === 514
-        ? null
-        : SUBCONJUNTOS[linha].reduce((acc, s) => {
-            acc[s] = { status: "RED", corretivas: [] };
-            return acc;
-          }, {}),
-  }));
-};
-
-/* ===================== APP ===================== */
 
 export default function App() {
-  const [linhaAtiva, setLinhaAtiva] = useState(512);
-  const [valvulas, setValvulas] = useState({});
-  const [valvulaSelecionada, setValvulaSelecionada] = useState(null);
+  const [linha, setLinha] = useState("512");
+  const [valvula, setValvula] = useState(1);
+  const [tipo, setTipo] = useState("Preventiva");
+  const [data, setData] = useState(() =>
+    new Date().toISOString().substring(0, 10)
+  );
+  const [responsavel, setResponsavel] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [erro, setErro] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const [linhas, setLinhas] = useState({});
   const [historico, setHistorico] = useState([]);
-  const [mensagem, setMensagem] = useState("");
 
-  const [form, setForm] = useState({
-    tipo: "",
-    data: "",
-    responsavel: "",
-    descricao: "",
-    subconjuntos: {},
-  });
-
-  const [erros, setErros] = useState({});
-
-  /* ===================== LOAD / SAVE ===================== */
-
+  // 🔹 Carregar dados
   useEffect(() => {
-    const salvo = localStorage.getItem(STORAGE_KEY);
-    const hist = localStorage.getItem(HIST_KEY);
+    const salvo = localStorage.getItem(STORAGE_LINHAS);
+    const hist = localStorage.getItem(STORAGE_HIST);
 
-    if (salvo) {
-      setValvulas(JSON.parse(salvo));
-    } else {
-      setValvulas({
-        512: gerarValvulas(512),
-        513: gerarValvulas(513),
-        514: gerarValvulas(514),
-      });
-    }
-
-    if (hist) setHistorico(JSON.parse(hist));
+    setLinhas(salvo ? JSON.parse(salvo) : {});
+    setHistorico(hist ? JSON.parse(hist) : []);
   }, []);
 
+  // 🔹 Persistir
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(valvulas));
-  }, [valvulas]);
+    localStorage.setItem(STORAGE_LINHAS, JSON.stringify(linhas));
+  }, [linhas]);
 
   useEffect(() => {
-    localStorage.setItem(HIST_KEY, JSON.stringify(historico));
+    localStorage.setItem(STORAGE_HIST, JSON.stringify(historico));
   }, [historico]);
 
-  /* ===================== VALIDADE PREVENTIVA ===================== */
-
-  useEffect(() => {
-    const agora = Date.now();
-    let alterou = false;
-
-    const novo = { ...valvulas };
-
-    Object.keys(novo).forEach((linha) => {
-      novo[linha].forEach((v) => {
-        if (
-          v.preventivaData &&
-          agora - v.preventivaData > PREVENTIVA_VALIDADE_MS
-        ) {
-          v.preventivaData = null;
-          alterou = true;
-
-          setHistorico((h) => [
-            {
-              id: Date.now(),
-              linha,
-              valvula: v.numero,
-              tipo: "PREVENTIVA VENCIDA",
-              data: new Date().toLocaleString("pt-BR"),
-              responsavel: "Sistema",
-              descricao: "Preventiva vencida automaticamente por prazo",
-            },
-            ...h,
-          ]);
-        }
-      });
-    });
-
-    if (alterou) setValvulas(novo);
-  }, [valvulas]);
-
-  /* ===================== SALVAR MANUTENÇÃO ===================== */
-
-  const validar = () => {
-    const e = {};
-    if (!form.tipo) e.tipo = "Obrigatório";
-    if (!form.data) e.data = "Obrigatório";
-    if (!form.responsavel) e.responsavel = "Obrigatório";
-    if (!form.descricao) e.descricao = "Obrigatório";
-    setErros(e);
-    return Object.keys(e).length === 0;
-  };
-
   const salvar = () => {
-    if (!validar()) return;
+    setErro("");
+    setMsg("");
 
-    const novo = { ...valvulas };
-    const v = novo[linhaAtiva][valvulaSelecionada - 1];
-
-    if (form.tipo === "PREVENTIVA") {
-      v.preventivaData = new Date(form.data).getTime();
-
-      if (v.subconjuntos) {
-        Object.keys(v.subconjuntos).forEach(
-          (s) => (v.subconjuntos[s].status = "GREEN")
-        );
-      }
+    if (!responsavel.trim()) {
+      setErro("⚠ Responsável é obrigatório");
+      return;
     }
 
-    if (form.tipo === "CORRETIVA") {
-      if (v.subconjuntos) {
-        Object.keys(form.subconjuntos).forEach((s) => {
-          v.subconjuntos[s].status = "YELLOW";
-          v.subconjuntos[s].corretivas.push(form);
-        });
-      }
-    }
+    const registro = {
+      id: Date.now(),
+      linha,
+      valvula,
+      tipo,
+      data,
+      responsavel,
+      descricao,
+    };
 
-    setValvulas(novo);
+    setHistorico((h) => [registro, ...h]);
 
-    setHistorico((h) => [
-      {
-        id: Date.now(),
-        linha: linhaAtiva,
-        valvula: valvulaSelecionada,
-        ...form,
+    setLinhas((prev) => ({
+      ...prev,
+      [linha]: {
+        ...(prev[linha] || {}),
+        [valvula]: {
+          status: tipo,
+          ultimaData: data,
+        },
       },
-      ...h,
-    ]);
+    }));
 
-    setMensagem("✅ Manutenção salva com sucesso");
-    setForm({
-      tipo: "",
-      data: "",
-      responsavel: "",
-      descricao: "",
-      subconjuntos: {},
-    });
-
-    setTimeout(() => setMensagem(""), 3000);
+    setDescricao("");
+    setResponsavel("");
+    setMsg("✅ Manutenção salva com sucesso");
   };
-
-  /* ===================== HISTÓRICO RESET ===================== */
-
-  const limparHistorico = () => {
-    const senha = prompt("Digite a senha para apagar o histórico:");
-    if (senha === HIST_PASSWORD) {
-      setHistorico([]);
-      alert("Histórico apagado");
-    } else {
-      alert("Senha incorreta");
-    }
-  };
-
-  /* ===================== UI ===================== */
 
   return (
-    <div style={{ padding: 20, maxWidth: 1100, margin: "auto" }}>
-      <h1>{APP_NAME}</h1>
+    <div style={{ padding: 20, maxWidth: 900, margin: "auto" }}>
+      <h1 style={{ fontSize: 32 }}>
+        Manutenção e Controle – Sala de Válvulas OW
+      </h1>
 
-      {/* Linha */}
-      <select
-        value={linhaAtiva}
-        onChange={(e) => setLinhaAtiva(Number(e.target.value))}
-      >
-        <option value={512}>Linha 512</option>
-        <option value={513}>Linha 513</option>
-        <option value={514}>Linha 514</option>
-      </select>
+      {/* FILTROS */}
+      <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+        <select value={linha} onChange={(e) => setLinha(e.target.value)}>
+          {Object.keys(LINHAS_CONFIG).map((l) => (
+            <option key={l} value={l}>
+              Linha {l}
+            </option>
+          ))}
+        </select>
 
-      {/* Válvula */}
-      <select
-        value={valvulaSelecionada || ""}
-        onChange={(e) => setValvulaSelecionada(Number(e.target.value))}
-      >
-        <option value="">Selecione a válvula</option>
-        {valvulas[linhaAtiva]?.map((v) => (
-          <option key={v.numero} value={v.numero}>
-            Válvula {v.numero}
-          </option>
-        ))}
-      </select>
+        <select
+          value={valvula}
+          onChange={(e) => setValvula(Number(e.target.value))}
+        >
+          {Array.from(
+            { length: LINHAS_CONFIG[linha] },
+            (_, i) => i + 1
+          ).map((v) => (
+            <option key={v} value={v}>
+              Válvula {v}
+            </option>
+          ))}
+        </select>
+      </div>
 
-      {valvulaSelecionada && (
-        <>
-          <h3>Manutenção</h3>
+      {/* MANUTENÇÃO */}
+      <h2 style={{ marginTop: 30 }}>Manutenção</h2>
 
-          <select
-            value={form.tipo}
-            onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-          >
-            <option value="">Tipo</option>
-            <option value="PREVENTIVA">Preventiva</option>
-            <option value="CORRETIVA">Corretiva</option>
-          </select>
-          {erros.tipo && <span>{erros.tipo}</span>}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
+          <option>Preventiva</option>
+          <option>Corretiva</option>
+        </select>
 
-          <input
-            type="date"
-            value={form.data}
-            onChange={(e) => setForm({ ...form, data: e.target.value })}
-          />
-          {erros.data && <span>{erros.data}</span>}
+        <input
+          type="date"
+          value={data}
+          onChange={(e) => setData(e.target.value)}
+        />
+      </div>
 
-          <input
-            placeholder="Responsável"
-            value={form.responsavel}
-            onChange={(e) =>
-              setForm({ ...form, responsavel: e.target.value })
-            }
-          />
-          {erros.responsavel && <span>{erros.responsavel}</span>}
+      <input
+        style={{ display: "block", marginTop: 10, width: "100%" }}
+        placeholder="Responsável (obrigatório)"
+        value={responsavel}
+        onChange={(e) => setResponsavel(e.target.value)}
+      />
 
-          <textarea
-            placeholder="Descrição"
-            value={form.descricao}
-            onChange={(e) =>
-              setForm({ ...form, descricao: e.target.value })
-            }
-          />
-          {erros.descricao && <span>{erros.descricao}</span>}
+      <textarea
+        style={{ width: "100%", marginTop: 10 }}
+        placeholder="Descrição da manutenção"
+        value={descricao}
+        onChange={(e) => setDescricao(e.target.value)}
+      />
 
-          <button onClick={salvar}>Salvar</button>
-          {mensagem && <p>{mensagem}</p>}
-        </>
-      )}
+      {erro && <p style={{ color: "red" }}>{erro}</p>}
+      {msg && <p style={{ color: "green" }}>{msg}</p>}
 
-      <h2>Histórico</h2>
-      <button onClick={limparHistorico}>Apagar histórico</button>
+      <button style={{ marginTop: 10 }} onClick={salvar}>
+        Salvar
+      </button>
+
+      {/* HISTÓRICO */}
+      <h2 style={{ marginTop: 40 }}>Histórico</h2>
 
       {historico.map((h) => (
-        <div key={h.id} style={{ borderBottom: "1px solid #ccc" }}>
-          {h.data} – Linha {h.linha} – Válvula {h.valvula} – {h.tipo}
+        <div key={h.id} style={{ borderBottom: "1px solid #ccc", padding: 8 }}>
+          <strong>
+            V-{h.valvula} — Linha {h.linha} — {h.tipo}
+          </strong>
           <br />
-          {h.responsavel} – {h.descricao}
+          {h.data} — {h.responsavel}
+          <br />
+          <em>{h.descricao}</em>
         </div>
       ))}
     </div>
