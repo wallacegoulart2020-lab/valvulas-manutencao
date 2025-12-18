@@ -1,22 +1,17 @@
 import { useEffect, useState } from "react";
 
-/* ===================== STORAGE ===================== */
-const STORAGE_LINHAS = "ow_linhas";
+/* ===================== CONFIGURAÇÕES ===================== */
+const STORAGE_512 = "ow_linha_512";
 const STORAGE_HIST = "ow_historico";
 
-/* ===================== CONFIG ===================== */
-const LINHAS_CONFIG = {
-  512: 175,
-  513: 175,
-  514: 72,
-};
+const SUBCONJUNTOS_512 = ["v1", "v2", "v3", "v5", "v6", "v7", "v8"];
+const TOTAL_VALVULAS_512 = 175;
+const VALIDADE_PREVENTIVA_MS = 1000 * 60 * 60 * 24 * 548; // 18 meses
 
-/* ===================== THEME ===================== */
+/* ===================== TEMA ===================== */
 const theme = {
-  background:
-    "linear-gradient(135deg, #1f2933 0%, #2b3640 45%, #1c232b 100%)",
+  bg: "linear-gradient(135deg, #1f2933, #2b3640, #1c232b)",
   card: "#2f3b46",
-  cardAlt: "#3a4752",
   border: "#475569",
   text: "#e5e7eb",
   muted: "#9ca3af",
@@ -26,207 +21,286 @@ const theme = {
   orange: "#fb923c",
 };
 
+/* ===================== HELPERS ===================== */
+const criarLinha512 = () =>
+  Array.from({ length: TOTAL_VALVULAS_512 }, (_, i) => ({
+    numero: i + 1,
+    subconjuntos: SUBCONJUNTOS_512.reduce((acc, s) => {
+      acc[s] = {
+        status: "pendente",
+        ultimaData: null,
+        historico: [],
+      };
+      return acc;
+    }, {}),
+    ultimaPreventiva: null,
+    teveCorretiva: false,
+  }));
+
+const statusSubColor = (s) =>
+  s === "preventiva"
+    ? theme.green
+    : s === "corretiva"
+    ? theme.yellow
+    : theme.red;
+
 /* ===================== APP ===================== */
 export default function App() {
-  const [linha, setLinha] = useState("512");
-  const [valvula, setValvula] = useState(1);
-  const [tipo, setTipo] = useState("Preventiva");
-  const [data, setData] = useState(
-    new Date().toISOString().substring(0, 10)
-  );
+  const [linha512, setLinha512] = useState([]);
+  const [historico, setHistorico] = useState([]);
+
+  const [valvulaSelecionada, setValvulaSelecionada] = useState(null);
+  const [subSelecionado, setSubSelecionado] = useState(null);
+
+  const [modal, setModal] = useState(false);
+  const [tipo, setTipo] = useState("preventiva");
+  const [data, setData] = useState("");
   const [responsavel, setResponsavel] = useState("");
   const [descricao, setDescricao] = useState("");
   const [erro, setErro] = useState("");
   const [msg, setMsg] = useState("");
 
-  const [linhas, setLinhas] = useState({});
-  const [historico, setHistorico] = useState([]);
-
   /* ===================== LOAD ===================== */
   useEffect(() => {
-    const salvo = localStorage.getItem(STORAGE_LINHAS);
+    const salvo = localStorage.getItem(STORAGE_512);
     const hist = localStorage.getItem(STORAGE_HIST);
 
-    setLinhas(salvo ? JSON.parse(salvo) : {});
+    setLinha512(salvo ? JSON.parse(salvo) : criarLinha512());
     setHistorico(hist ? JSON.parse(hist) : []);
   }, []);
 
   /* ===================== SAVE ===================== */
   useEffect(() => {
-    localStorage.setItem(STORAGE_LINHAS, JSON.stringify(linhas));
-  }, [linhas]);
+    localStorage.setItem(STORAGE_512, JSON.stringify(linha512));
+  }, [linha512]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_HIST, JSON.stringify(historico));
   }, [historico]);
 
-  /* ===================== ACTION ===================== */
-  const salvar = () => {
-    setErro("");
-    setMsg("");
+  /* ===================== VALIDADE AUTOMÁTICA ===================== */
+  useEffect(() => {
+    const agora = Date.now();
+    let mudou = false;
 
-    if (!responsavel.trim()) {
-      setErro("Responsável é obrigatório");
+    const nova = linha512.map((v) => {
+      if (
+        v.ultimaPreventiva &&
+        agora - v.ultimaPreventiva > VALIDADE_PREVENTIVA_MS
+      ) {
+        mudou = true;
+        SUBCONJUNTOS_512.forEach((s) => {
+          v.subconjuntos[s].status = "pendente";
+        });
+        v.ultimaPreventiva = null;
+
+        setHistorico((h) => [
+          {
+            id: Date.now(),
+            tipo: "AUTOMÁTICO",
+            linha: 512,
+            valvula: v.numero,
+            descricao: "Preventiva vencida automaticamente",
+            data: new Date().toLocaleString("pt-BR"),
+            responsavel: "Sistema",
+          },
+          ...h,
+        ]);
+      }
+      return v;
+    });
+
+    if (mudou) setLinha512([...nova]);
+  }, [linha512]);
+
+  /* ===================== SALVAR MANUTENÇÃO ===================== */
+  const salvar = () => {
+    if (!responsavel.trim() || !descricao.trim() || !data) {
+      setErro("Preencha todos os campos obrigatórios");
       return;
     }
 
-    const registro = {
-      id: Date.now(),
-      linha,
-      valvula,
+    const nova = [...linha512];
+    const v = nova[valvulaSelecionada - 1];
+    const sub = v.subconjuntos[subSelecionado];
+
+    sub.status = tipo;
+    sub.ultimaData = data;
+    sub.historico.push({
       tipo,
       data,
       responsavel,
       descricao,
-    };
+    });
 
-    setHistorico((h) => [registro, ...h]);
+    if (tipo === "corretiva") v.teveCorretiva = true;
 
-    setLinhas((prev) => ({
-      ...prev,
-      [linha]: {
-        ...(prev[linha] || {}),
-        [valvula]: {
-          status: tipo,
-          ultimaData: data,
-        },
+    const todosVerdes = SUBCONJUNTOS_512.every(
+      (s) => v.subconjuntos[s].status === "preventiva"
+    );
+
+    if (todosVerdes) v.ultimaPreventiva = Date.now();
+
+    setLinha512(nova);
+    setHistorico((h) => [
+      {
+        id: Date.now(),
+        tipo: tipo.toUpperCase(),
+        linha: 512,
+        valvula: v.numero,
+        subconjunto: subSelecionado,
+        data,
+        responsavel,
+        descricao,
       },
-    }));
+      ...h,
+    ]);
 
-    setDescricao("");
-    setResponsavel("");
     setMsg("✔ Manutenção salva com sucesso");
+    setTimeout(() => setMsg(""), 2500);
+
+    setErro("");
+    setResponsavel("");
+    setDescricao("");
+    setData("");
+    setModal(false);
+  };
+
+  /* ===================== STATUS DA VÁLVULA ===================== */
+  const statusValvula = (v) => {
+    if (v.teveCorretiva) return theme.orange;
+    if (v.ultimaPreventiva) return theme.green;
+    return theme.red;
   };
 
   /* ===================== UI ===================== */
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: theme.background,
-        color: theme.text,
-        padding: 24,
-      }}
-    >
-      <div style={{ maxWidth: 1000, margin: "auto" }}>
-        <h1 style={{ fontSize: 28, marginBottom: 6 }}>
-          Manutenção e Controle – Sala de Válvulas OW
-        </h1>
-        <p style={{ color: theme.muted, marginBottom: 24 }}>
-          Painel operacional de manutenção
-        </p>
+    <div style={{ minHeight: "100vh", background: theme.bg, color: theme.text }}>
+      <div style={{ maxWidth: 1100, margin: "auto", padding: 20 }}>
+        <h1>Manutenção e Controle – Sala de Válvulas OW</h1>
 
-        {/* FILTROS */}
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            background: theme.card,
-            padding: 16,
-            borderRadius: 10,
-            border: `1px solid ${theme.border}`,
-            marginBottom: 24,
-          }}
+        {/* FILTRO VÁLVULA */}
+        <select
+          style={select}
+          onChange={(e) => setValvulaSelecionada(Number(e.target.value))}
+          value={valvulaSelecionada || ""}
         >
-          <select
-            value={linha}
-            onChange={(e) => setLinha(e.target.value)}
-            style={selectStyle}
-          >
-            {Object.keys(LINHAS_CONFIG).map((l) => (
-              <option key={l} value={l}>
-                Linha {l}
-              </option>
-            ))}
-          </select>
+          <option value="">Selecione a válvula (512)</option>
+          {linha512.map((v) => (
+            <option key={v.numero} value={v.numero}>
+              Válvula {v.numero}
+            </option>
+          ))}
+        </select>
 
-          <select
-            value={valvula}
-            onChange={(e) => setValvula(Number(e.target.value))}
-            style={selectStyle}
-          >
-            {Array.from(
-              { length: LINHAS_CONFIG[linha] },
-              (_, i) => i + 1
-            ).map((v) => (
-              <option key={v} value={v}>
-                Válvula {v}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* MANUTENÇÃO */}
-        <div
-          style={{
-            background: theme.cardAlt,
-            padding: 20,
-            borderRadius: 10,
-            border: `1px solid ${theme.border}`,
-          }}
-        >
-          <h2 style={{ marginBottom: 12 }}>Registro de Manutenção</h2>
-
-          <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
-            <select
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value)}
-              style={selectStyle}
-            >
-              <option>Preventiva</option>
-              <option>Corretiva</option>
-            </select>
-
-            <input
-              type="date"
-              value={data}
-              onChange={(e) => setData(e.target.value)}
-              style={inputStyle}
-            />
-          </div>
-
-          <input
-            placeholder="Responsável (obrigatório)"
-            value={responsavel}
-            onChange={(e) => setResponsavel(e.target.value)}
-            style={inputStyle}
-          />
-
-          <textarea
-            placeholder="Descrição da manutenção"
-            value={descricao}
-            onChange={(e) => setDescricao(e.target.value)}
-            style={{ ...inputStyle, height: 80 }}
-          />
-
-          {erro && <p style={{ color: theme.red }}>{erro}</p>}
-          {msg && <p style={{ color: theme.green }}>{msg}</p>}
-
-          <button style={buttonStyle} onClick={salvar}>
-            Salvar
-          </button>
-        </div>
-
-        {/* HISTÓRICO */}
-        <h2 style={{ marginTop: 32 }}>Histórico</h2>
-
-        {historico.map((h) => (
+        {/* CARD DA VÁLVULA */}
+        {valvulaSelecionada && (
           <div
-            key={h.id}
             style={{
               background: theme.card,
-              padding: 12,
-              borderRadius: 8,
-              marginTop: 8,
-              border: `1px solid ${theme.border}`,
+              border: `2px solid ${statusValvula(
+                linha512[valvulaSelecionada - 1]
+              )}`,
+              borderRadius: 12,
+              padding: 16,
+              marginTop: 20,
             }}
           >
-            <strong>
-              Linha {h.linha} · Válvula {h.valvula} · {h.tipo}
-            </strong>
-            <div style={{ fontSize: 14, color: theme.muted }}>
-              {h.data} · {h.responsavel}
+            <h2>Válvula {valvulaSelecionada}</h2>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {SUBCONJUNTOS_512.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    setSubSelecionado(s);
+                    setModal(true);
+                  }}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: statusSubColor(
+                      linha512[valvulaSelecionada - 1].subconjuntos[s].status
+                    ),
+                    color: "#022c22",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {s.toUpperCase()}
+                </button>
+              ))}
             </div>
+          </div>
+        )}
+
+        {/* MODAL */}
+        {modal && (
+          <div style={overlay}>
+            <div style={modalStyle}>
+              <h3>
+                Subconjunto {subSelecionado?.toUpperCase()} — Válvula{" "}
+                {valvulaSelecionada}
+              </h3>
+
+              <select
+                style={input}
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value)}
+              >
+                <option value="preventiva">Preventiva</option>
+                <option value="corretiva">Corretiva</option>
+              </select>
+
+              <input
+                type="date"
+                style={input}
+                value={data}
+                onChange={(e) => setData(e.target.value)}
+              />
+
+              <input
+                placeholder="Responsável"
+                style={input}
+                value={responsavel}
+                onChange={(e) => setResponsavel(e.target.value)}
+              />
+
+              <textarea
+                placeholder="Descrição da manutenção"
+                style={{ ...input, height: 80 }}
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+              />
+
+              {erro && <p style={{ color: theme.red }}>{erro}</p>}
+              {msg && <p style={{ color: theme.green }}>{msg}</p>}
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button style={btnSave} onClick={salvar}>
+                  Salvar
+                </button>
+                <button
+                  style={btnCancel}
+                  onClick={() => {
+                    setModal(false);
+                    setErro("");
+                  }}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* HISTÓRICO */}
+        <h2 style={{ marginTop: 40 }}>Histórico</h2>
+        {historico.map((h) => (
+          <div key={h.id} style={histItem}>
+            Linha 512 · V{h.valvula} · {h.subconjunto} · {h.tipo}
+            <br />
+            {h.data} · {h.responsavel}
             <div>{h.descricao}</div>
           </div>
         ))}
@@ -236,28 +310,67 @@ export default function App() {
 }
 
 /* ===================== STYLES ===================== */
-const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
+const select = {
+  padding: 10,
+  borderRadius: 8,
   background: "#1f2933",
   color: "#e5e7eb",
   border: "1px solid #475569",
+};
+
+const input = {
+  width: "100%",
+  padding: 10,
   borderRadius: 8,
+  background: "#1f2933",
+  color: "#e5e7eb",
+  border: "1px solid #475569",
   marginBottom: 10,
 };
 
-const selectStyle = {
-  ...inputStyle,
-  marginBottom: 0,
-};
-
-const buttonStyle = {
-  marginTop: 10,
-  padding: "10px 18px",
+const btnSave = {
+  flex: 1,
+  padding: 10,
+  borderRadius: 8,
   background: "#22c55e",
   color: "#022c22",
-  border: "none",
-  borderRadius: 8,
   fontWeight: "bold",
-  cursor: "pointer",
+  border: "none",
+};
+
+const btnCancel = {
+  flex: 1,
+  padding: 10,
+  borderRadius: 8,
+  background: "#ef4444",
+  color: "#fff",
+  fontWeight: "bold",
+  border: "none",
+};
+
+const overlay = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.6)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+};
+
+const modalStyle = {
+  background: "#2f3b46",
+  padding: 20,
+  borderRadius: 12,
+  width: "100%",
+  maxWidth: 420,
+  border: "1px solid #475569",
+};
+
+const histItem = {
+  background: "#2f3b46",
+  padding: 10,
+  borderRadius: 8,
+  marginTop: 8,
+  border: "1px solid #475569",
 };
