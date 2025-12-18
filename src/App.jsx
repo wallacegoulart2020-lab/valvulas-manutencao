@@ -1,195 +1,214 @@
 import { useEffect, useMemo, useState } from "react";
 
-const STORAGE_KEY = "ow_valvulas_dados";
-const HIST_KEY = "ow_valvulas_historico";
+/* ===================== STORAGE ===================== */
+const STORAGE = "ow_valvulas";
+const HIST = "ow_historico";
 
-const SUBCONJUNTOS_512 = ["V1","V2","V3","V5","V6","V7","V8"];
-
-const bg = {
-  minHeight: "100vh",
-  background: "linear-gradient(135deg,#1f2a33,#2b3a45,#1f2a33)",
-  color: "#e5e7eb",
-  padding: 20,
-  boxSizing: "border-box"
+/* ===================== CONFIG ===================== */
+const LINHAS = {
+  512: 175,
+  513: 175,
+  514: 72,
 };
 
-const card = {
-  background: "#2b3a45",
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: "0 10px 30px rgba(0,0,0,.4)",
-  marginBottom: 20,
-  overflow: "hidden"
+/* ===================== THEME ===================== */
+const theme = {
+  bg: "linear-gradient(135deg,#1f2933,#2b3640,#1c232b)",
+  card: "#2f3b46",
+  border: "#475569",
+  text: "#e5e7eb",
+  muted: "#9ca3af",
+  red: "#ef4444",
+  yellow: "#eab308",
+  green: "#22c55e",
+  metallic:
+    "linear-gradient(90deg,#cfd8dc,#9ca3af,#e5e7eb,#9ca3af)",
 };
 
+/* ===================== APP ===================== */
 export default function App() {
-  const [valvula, setValvula] = useState("");
   const [dados, setDados] = useState({});
   const [historico, setHistorico] = useState([]);
+  const [linhaSel, setLinhaSel] = useState(512);
+  const [valvula, setValvula] = useState("");
 
+  /* LOAD */
   useEffect(() => {
-    const salvo = localStorage.getItem(STORAGE_KEY);
-    const hist = localStorage.getItem(HIST_KEY);
-    if (salvo) setDados(JSON.parse(salvo));
-    if (hist) setHistorico(JSON.parse(hist));
+    setDados(JSON.parse(localStorage.getItem(STORAGE)) || {});
+    setHistorico(JSON.parse(localStorage.getItem(HIST)) || []);
   }, []);
 
+  /* SAVE */
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+    localStorage.setItem(STORAGE, JSON.stringify(dados));
   }, [dados]);
 
   useEffect(() => {
-    localStorage.setItem(HIST_KEY, JSON.stringify(historico));
+    localStorage.setItem(HIST, JSON.stringify(historico));
   }, [historico]);
 
+  /* DASHBOARD COUNTS */
   const dashboard = useMemo(() => {
-    let pendente = 0, corretiva = 0, ok = 0;
-    for (let i = 1; i <= 175; i++) {
-      const v = dados[i];
-      if (!v || !v.preventiva) pendente++;
-      else ok++;
-      if (v?.teveCorretiva) corretiva++;
-    }
-    return { pendente, corretiva, ok };
-  }, [dados]);
+    const result = {
+      pendente: {},
+      corretiva: {},
+      ok: {},
+    };
 
-  const toggleSub = (sub) => {
-    if (!valvula) return;
-    setDados(prev => {
-      const atual = prev[valvula] || {};
-      const subs = atual.subs || {};
-      const novo = {
-        ...prev,
-        [valvula]: {
-          ...atual,
-          preventiva: true,
-          subs: {
-            ...subs,
-            [sub]: !subs[sub]
-          }
-        }
-      };
-      return novo;
+    Object.keys(LINHAS).forEach((l) => {
+      let p = 0,
+        c = 0,
+        o = 0;
+      for (let i = 1; i <= LINHAS[l]; i++) {
+        const v = dados[`${l}-${i}`];
+        if (!v || !v.preventiva) p++;
+        else o++;
+        if (v?.teveCorretiva) c++;
+      }
+      result.pendente[l] = p;
+      result.corretiva[l] = c;
+      result.ok[l] = o;
     });
 
-    setHistorico(h => [
-      {
-        id: Date.now(),
-        linha: 512,
-        valvula,
-        subconjunto: sub,
-        tipo: "PREVENTIVA",
-        data: new Date().toISOString().slice(0,10),
-        responsavel: "Wallace",
-        desc: "Realizado"
-      },
-      ...h
-    ]);
+    return result;
+  }, [dados]);
+
+  /* ENTER KEY */
+  const handleKey = (e) => {
+    if (e.key === "Enter") {
+      e.target.blur(); // fecha teclado
+    }
   };
 
   return (
-    <div style={bg}>
-      {/* HEADER */}
-      <div style={{ textAlign:"center", marginBottom: 30 }}>
-        <h1 style={{
-          fontSize: 34,
-          marginBottom: 8,
-          background: "linear-gradient(90deg,#d1d5db,#9ca3af,#e5e7eb)",
-          WebkitBackgroundClip: "text",
-          WebkitTextFillColor: "transparent"
-        }}>
-          Manutenção e Controle – Sala de Válvulas OW
-        </h1>
-        <div style={{ fontSize: 42 }}>🍺 🔧</div>
-        <p style={{ opacity:.8 }}>
-          Gestão técnica de manutenção em sistemas de envase cervejeiro
-        </p>
-      </div>
-
-      {/* DASHBOARD */}
-      {!valvula && (
-        <div style={{ display:"flex", gap:16, flexWrap:"wrap", marginBottom: 20 }}>
-          <div style={{ ...card, border:"2px solid #ef4444", flex:1 }}>
-            <h2 style={{ color:"#ef4444" }}>{dashboard.pendente}</h2>
-            Preventivas pendentes
-          </div>
-          <div style={{ ...card, border:"2px solid #facc15", flex:1 }}>
-            <h2 style={{ color:"#facc15" }}>{dashboard.corretiva}</h2>
-            Com corretiva
-          </div>
-          <div style={{ ...card, border:"2px solid #22c55e", flex:1 }}>
-            <h2 style={{ color:"#22c55e" }}>{dashboard.ok}</h2>
-            Preventivas em dia
-          </div>
+    <div
+      style={{
+        minHeight: "100vh",
+        background: theme.bg,
+        color: theme.text,
+        padding: 20,
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ maxWidth: 1200, margin: "auto" }}>
+        {/* HEADER */}
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
+          <h1
+            style={{
+              fontSize: 32,
+              background: theme.metallic,
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Manutenção e Controle – Sala de Válvulas OW
+          </h1>
+          <div style={{ fontSize: 40 }}>🍺 🔧</div>
+          <p style={{ color: theme.muted }}>
+            Gestão técnica de manutenção em sistemas de envase cervejeiro
+          </p>
         </div>
-      )}
 
-      {/* INPUT VÁLVULA */}
-      <div style={card}>
+        {/* DASHBOARD */}
+        {!valvula && (
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 30,
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <DashBox
+              title="Preventivas pendentes"
+              color={theme.red}
+              data={dashboard.pendente}
+            />
+            <DashBox
+              title="Com corretiva"
+              color={theme.yellow}
+              data={dashboard.corretiva}
+            />
+            <DashBox
+              title="Preventivas em dia"
+              color={theme.green}
+              data={dashboard.ok}
+            />
+          </div>
+        )}
+
+        {/* SELECT LINHA */}
+        <select
+          value={linhaSel}
+          onChange={(e) => {
+            setLinhaSel(Number(e.target.value));
+            setValvula("");
+          }}
+          style={input}
+        >
+          <option value={512}>Linha 512</option>
+          <option value={513}>Linha 513</option>
+          <option value={514}>Linha 514</option>
+        </select>
+
+        {/* INPUT VÁLVULA */}
         <input
           type="number"
           min={1}
-          max={175}
-          placeholder="Digite o número da válvula (1–175)"
+          max={LINHAS[linhaSel]}
+          placeholder={`Digite a válvula (${linhaSel})`}
           value={valvula}
-          onChange={e => setValvula(e.target.value)}
-          style={{
-            width:"100%",
-            padding:14,
-            fontSize:16,
-            borderRadius:12,
-            border:"1px solid #374151",
-            background:"#1f2933",
-            color:"#fff",
-            boxSizing:"border-box"
-          }}
+          onChange={(e) => setValvula(e.target.value)}
+          onKeyDown={handleKey}
+          inputMode="numeric"
+          style={input}
         />
-      </div>
-
-      {/* VÁLVULA */}
-      {valvula && (
-        <div style={{ ...card, border:"2px solid #ef4444" }}>
-          <h2>Válvula {valvula}</h2>
-          <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-            {SUBCONJUNTOS_512.map(s => {
-              const ativo = dados[valvula]?.subs?.[s];
-              return (
-                <button
-                  key={s}
-                  onClick={() => toggleSub(s)}
-                  style={{
-                    padding:"10px 18px",
-                    borderRadius:12,
-                    border:"none",
-                    background: ativo ? "#22c55e" : "#ef4444",
-                    color:"#000",
-                    fontWeight:"bold"
-                  }}
-                >
-                  {s}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* HISTÓRICO */}
-      <div style={card}>
-        <h2>Histórico</h2>
-        {historico.slice(0,10).map(h => (
-          <div key={h.id} style={{
-            background:"#1f2933",
-            padding:12,
-            borderRadius:10,
-            marginBottom:10
-          }}>
-            Linha {h.linha} · V{h.valvula} · {h.subconjunto} · {h.tipo}<br/>
-            {h.data} · {h.responsavel}<br/>
-            {h.desc}
-          </div>
-        ))}
       </div>
     </div>
   );
 }
+
+/* ===================== COMPONENTS ===================== */
+function DashBox({ title, color, data }) {
+  return (
+    <div
+      style={{
+        flex: "1 1 0",
+        minWidth: 0,
+        background: theme.card,
+        borderRadius: 14,
+        padding: 16,
+        border: `2px solid ${color}`,
+        boxSizing: "border-box",
+        lineHeight: 1.4,
+      }}
+    >
+      <div style={{ fontWeight: "bold", marginBottom: 8 }}>{title}</div>
+      {Object.keys(data).map((l) => (
+        <div
+          key={l}
+          style={{
+            fontSize: 14,
+            color: theme.text,
+          }}
+        >
+          {l} – {data[l]}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ===================== STYLES ===================== */
+const input = {
+  width: "100%",
+  padding: 12,
+  borderRadius: 10,
+  background: "#1f2933",
+  color: "#e5e7eb",
+  border: "1px solid #475569",
+  marginBottom: 12,
+  boxSizing: "border-box",
+};
