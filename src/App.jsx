@@ -1,4 +1,7 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+
+const STORAGE_KEY = "valvulas_estado";
+const HIST_KEY = "valvulas_historico";
 
 const STATUS = {
   OK: { label: "OK", color: "#d1fae5" },
@@ -21,14 +24,11 @@ const LINHAS_INICIAIS = {
   ],
 };
 
-const STORAGE_KEY = "valvulas_app_estado";
-const HIST_KEY = "valvulas_app_historico";
-
 export default function App() {
   const [linhas, setLinhas] = useState({});
   const [historico, setHistorico] = useState([]);
 
-  // 🔹 Carregar dados salvos
+  // carregar dados
   useEffect(() => {
     const salvo = localStorage.getItem(STORAGE_KEY);
     const hist = localStorage.getItem(HIST_KEY);
@@ -37,7 +37,7 @@ export default function App() {
     setHistorico(hist ? JSON.parse(hist) : []);
   }, []);
 
-  // 🔹 Salvar automaticamente
+  // salvar automaticamente
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(linhas));
   }, [linhas]);
@@ -108,11 +108,9 @@ export default function App() {
                   alterarStatus(linha, v.id, e.target.value)
                 }
               >
-                {Object.keys(STATUS).map((s) => (
-                  <option key={s} value={s}>
-                    {STATUS[s].label}
-                  </option>
-                ))}
+                <option value="OK">OK</option>
+                <option value="FALHA">FALHA</option>
+                <option value="MANUTENCAO">MANUTENÇÃO</option>
               </select>
             </div>
           ))}
@@ -122,7 +120,7 @@ export default function App() {
       <div style={{ marginTop: 40 }}>
         <h2>Histórico</h2>
 
-        {historico.length === 0 && <p>Nenhuma alteração registrada.</p>}
+        {historico.length === 0 && <p>Nenhuma alteração registrada</p>}
 
         {historico.map((h) => (
           <div
@@ -130,12 +128,12 @@ export default function App() {
             style={{
               borderBottom: "1px solid #ccc",
               padding: "6px 0",
-              fontSize: 14,
             }}
           >
-            <strong>{h.valvula}</strong> – {h.status}  
+            <strong>{h.valvula}</strong> — Linha {h.linha} —{" "}
+            {h.status}  
             <br />
-            <small>Linha {h.linha} | {h.data}</small>
+            <small>{h.data}</small>
           </div>
         ))}
       </div>
