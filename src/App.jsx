@@ -1,77 +1,80 @@
 import { useState } from "react";
 
 export default function App() {
-  const [linhas, setLinhas] = useState([
+  const [linhas] = useState([
     {
       id: 512,
       nome: "Linha 512",
       valvulas: [
-        {
-          id: "V-01",
-          status: "OK",
-          falhas: []
-        },
-        {
-          id: "V-02",
-          status: "Falha",
-          falhas: [
-            {
-              data: "2025-12-10",
-              descricao: "Vazamento no selo",
-              tipo: "Mecânica"
-            }
-          ]
-        }
+        { id: "V-512-01", status: "OK" },
+        { id: "V-512-02", status: "FALHA" }
       ]
     },
     {
       id: 513,
       nome: "Linha 513",
       valvulas: [
-        {
-          id: "V-10",
-          status: "OK",
-          falhas: []
-        }
+        { id: "V-513-01", status: "OK" },
+        { id: "V-513-02", status: "OK" }
+      ]
+    },
+    {
+      id: 514,
+      nome: "Linha 514",
+      valvulas: [
+        { id: "V-514-01", status: "MANUTENÇÃO" },
+        { id: "V-514-02", status: "OK" }
       ]
     }
   ]);
 
+  const corStatus = (status) => {
+    if (status === "OK") return "#d4edda";
+    if (status === "FALHA") return "#f8d7da";
+    if (status === "MANUTENÇÃO") return "#fff3cd";
+    return "#eee";
+  };
+
   return (
-    <div style={{ padding: 20, fontFamily: "Arial" }}>
+    <div style={{ padding: "24px", fontFamily: "Arial, sans-serif" }}>
       <h1>App de Monitoramento de Válvulas</h1>
 
+      <p>
+        Sistema de registro e histórico de manutenção de válvulas industriais.
+      </p>
+
+      <hr />
+
       {linhas.map((linha) => (
-        <div key={linha.id} style={{ marginBottom: 20 }}>
+        <div
+          key={linha.id}
+          style={{
+            border: "2px solid #444",
+            borderRadius: "8px",
+            padding: "16px",
+            marginBottom: "20px",
+            backgroundColor: "#f9f9f9"
+          }}
+        >
           <h2>{linha.nome}</h2>
 
-          {linha.valvulas.map((valvula) => (
-            <div
-              key={valvula.id}
-              style={{
-                padding: 10,
-                marginBottom: 10,
-                border: "1px solid #ccc",
-                borderRadius: 6
-              }}
-            >
-              <strong>Válvula {valvula.id}</strong>  
-              <div>Status: {valvula.status}</div>
-
-              {valvula.falhas.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <em>Histórico de falhas:</em>
-                  <ul>
-                    {valvula.falhas.map((falha, index) => (
-                      <li key={index}>
-                        {falha.data} – {falha.tipo} – {falha.descricao}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ))}
+          <ul>
+            {linha.valvulas.map((valvula) => (
+              <li
+                key={valvula.id}
+                style={{
+                  marginBottom: "8px",
+                  padding: "8px",
+                  borderRadius: "4px",
+                  backgroundColor: corStatus(valvula.status),
+                  transition: "all 0.3s ease"
+                }}
+              >
+                <strong>{valvula.id}</strong> — Status:{" "}
+                <strong>{valvula.status}</strong>
+              </li>
+            ))}
+          </ul>
         </div>
       ))}
     </div>
