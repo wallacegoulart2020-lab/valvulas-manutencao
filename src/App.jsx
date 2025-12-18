@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 
-/* ===================== CONFIGURAÇÕES ===================== */
+/* ===================== STORAGE ===================== */
 const STORAGE_512 = "ow_linha_512";
 const STORAGE_HIST = "ow_historico";
 
-const SUBCONJUNTOS_512 = ["v1", "v2", "v3", "v5", "v6", "v7", "v8"];
-const TOTAL_VALVULAS_512 = 175;
-const VALIDADE_PREVENTIVA_MS = 1000 * 60 * 60 * 24 * 548; // 18 meses
+/* ===================== CONFIG ===================== */
+const TOTAL_512 = 175;
+const SUBS_512 = ["v1", "v2", "v3", "v5", "v6", "v7", "v8"];
+const PREVENTIVA_MS = 1000 * 60 * 60 * 24 * 548;
 
-/* ===================== TEMA ===================== */
+/* ===================== THEME ===================== */
 const theme = {
-  bg: "linear-gradient(135deg, #1f2933, #2b3640, #1c232b)",
+  bg: "linear-gradient(135deg,#1f2933,#2b3640,#1c232b)",
   card: "#2f3b46",
   border: "#475569",
   text: "#e5e7eb",
@@ -19,211 +20,205 @@ const theme = {
   red: "#ef4444",
   yellow: "#eab308",
   orange: "#fb923c",
+  metallic:
+    "linear-gradient(90deg,#cfd8dc,#9ca3af,#e5e7eb,#9ca3af)",
 };
 
-/* ===================== HELPERS ===================== */
-const criarLinha512 = () =>
-  Array.from({ length: TOTAL_VALVULAS_512 }, (_, i) => ({
+/* ===================== INIT ===================== */
+const init512 = () =>
+  Array.from({ length: TOTAL_512 }, (_, i) => ({
     numero: i + 1,
-    subconjuntos: SUBCONJUNTOS_512.reduce((acc, s) => {
-      acc[s] = {
-        status: "pendente",
-        ultimaData: null,
-        historico: [],
-      };
-      return acc;
-    }, {}),
     ultimaPreventiva: null,
     teveCorretiva: false,
+    subs: SUBS_512.reduce((a, s) => {
+      a[s] = { status: "pendente", data: null };
+      return a;
+    }, {}),
   }));
-
-const statusSubColor = (s) =>
-  s === "preventiva"
-    ? theme.green
-    : s === "corretiva"
-    ? theme.yellow
-    : theme.red;
 
 /* ===================== APP ===================== */
 export default function App() {
-  const [linha512, setLinha512] = useState([]);
-  const [historico, setHistorico] = useState([]);
+  const [linha, setLinha] = useState([]);
+  const [hist, setHist] = useState([]);
+  const [valvula, setValvula] = useState("");
+  const [modal, setModal] = useState(null);
 
-  const [valvulaSelecionada, setValvulaSelecionada] = useState(null);
-  const [subSelecionado, setSubSelecionado] = useState(null);
-
-  const [modal, setModal] = useState(false);
   const [tipo, setTipo] = useState("preventiva");
   const [data, setData] = useState("");
-  const [responsavel, setResponsavel] = useState("");
-  const [descricao, setDescricao] = useState("");
+  const [resp, setResp] = useState("");
+  const [desc, setDesc] = useState("");
   const [erro, setErro] = useState("");
   const [msg, setMsg] = useState("");
 
-  /* ===================== LOAD ===================== */
+  /* LOAD */
   useEffect(() => {
-    const salvo = localStorage.getItem(STORAGE_512);
-    const hist = localStorage.getItem(STORAGE_HIST);
-
-    setLinha512(salvo ? JSON.parse(salvo) : criarLinha512());
-    setHistorico(hist ? JSON.parse(hist) : []);
+    setLinha(
+      JSON.parse(localStorage.getItem(STORAGE_512)) || init512()
+    );
+    setHist(JSON.parse(localStorage.getItem(STORAGE_HIST)) || []);
   }, []);
 
-  /* ===================== SAVE ===================== */
+  /* SAVE */
   useEffect(() => {
-    localStorage.setItem(STORAGE_512, JSON.stringify(linha512));
-  }, [linha512]);
+    localStorage.setItem(STORAGE_512, JSON.stringify(linha));
+  }, [linha]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_HIST, JSON.stringify(historico));
-  }, [historico]);
+    localStorage.setItem(STORAGE_HIST, JSON.stringify(hist));
+  }, [hist]);
 
-  /* ===================== VALIDADE AUTOMÁTICA ===================== */
+  /* VALIDADE */
   useEffect(() => {
-    const agora = Date.now();
-    let mudou = false;
+    const now = Date.now();
+    let changed = false;
 
-    const nova = linha512.map((v) => {
-      if (
-        v.ultimaPreventiva &&
-        agora - v.ultimaPreventiva > VALIDADE_PREVENTIVA_MS
-      ) {
-        mudou = true;
-        SUBCONJUNTOS_512.forEach((s) => {
-          v.subconjuntos[s].status = "pendente";
-        });
+    linha.forEach((v) => {
+      if (v.ultimaPreventiva && now - v.ultimaPreventiva > PREVENTIVA_MS) {
+        SUBS_512.forEach((s) => (v.subs[s].status = "pendente"));
         v.ultimaPreventiva = null;
-
-        setHistorico((h) => [
+        changed = true;
+        setHist((h) => [
           {
             id: Date.now(),
             tipo: "AUTOMÁTICO",
-            linha: 512,
             valvula: v.numero,
             descricao: "Preventiva vencida automaticamente",
             data: new Date().toLocaleString("pt-BR"),
-            responsavel: "Sistema",
           },
           ...h,
         ]);
       }
-      return v;
     });
 
-    if (mudou) setLinha512([...nova]);
-  }, [linha512]);
+    if (changed) setLinha([...linha]);
+  }, [linha]);
 
-  /* ===================== SALVAR MANUTENÇÃO ===================== */
+  /* SALVAR */
   const salvar = () => {
-    if (!responsavel.trim() || !descricao.trim() || !data) {
+    if (!data || !resp || !desc) {
       setErro("Preencha todos os campos obrigatórios");
       return;
     }
 
-    const nova = [...linha512];
-    const v = nova[valvulaSelecionada - 1];
-    const sub = v.subconjuntos[subSelecionado];
-
-    sub.status = tipo;
-    sub.ultimaData = data;
-    sub.historico.push({
-      tipo,
-      data,
-      responsavel,
-      descricao,
-    });
+    const v = linha[valvula - 1];
+    v.subs[modal].status = tipo;
+    v.subs[modal].data = data;
 
     if (tipo === "corretiva") v.teveCorretiva = true;
 
-    const todosVerdes = SUBCONJUNTOS_512.every(
-      (s) => v.subconjuntos[s].status === "preventiva"
+    const allGreen = SUBS_512.every(
+      (s) => v.subs[s].status === "preventiva"
     );
+    if (allGreen) v.ultimaPreventiva = Date.now();
 
-    if (todosVerdes) v.ultimaPreventiva = Date.now();
-
-    setLinha512(nova);
-    setHistorico((h) => [
+    setLinha([...linha]);
+    setHist((h) => [
       {
         id: Date.now(),
         tipo: tipo.toUpperCase(),
-        linha: 512,
-        valvula: v.numero,
-        subconjunto: subSelecionado,
+        valvula,
+        subconjunto: modal,
         data,
-        responsavel,
-        descricao,
+        responsavel: resp,
+        descricao: desc,
       },
       ...h,
     ]);
 
-    setMsg("✔ Manutenção salva com sucesso");
-    setTimeout(() => setMsg(""), 2500);
-
-    setErro("");
-    setResponsavel("");
-    setDescricao("");
+    setModal(null);
+    setResp("");
+    setDesc("");
     setData("");
-    setModal(false);
+    setErro("");
+    setMsg("✔ Manutenção salva");
+    setTimeout(() => setMsg(""), 2000);
   };
 
-  /* ===================== STATUS DA VÁLVULA ===================== */
-  const statusValvula = (v) => {
-    if (v.teveCorretiva) return theme.orange;
-    if (v.ultimaPreventiva) return theme.green;
-    return theme.red;
+  /* STATUS */
+  const corSub = (s) =>
+    s === "preventiva"
+      ? theme.green
+      : s === "corretiva"
+      ? theme.yellow
+      : theme.red;
+
+  const corValvula = (v) =>
+    v.teveCorretiva
+      ? theme.orange
+      : v.ultimaPreventiva
+      ? theme.green
+      : theme.red;
+
+  /* DASHBOARD */
+  const dash = {
+    red: linha.filter((v) => !v.ultimaPreventiva).length,
+    yellow: linha.filter((v) => v.teveCorretiva).length,
+    green: linha.filter((v) => v.ultimaPreventiva).length,
   };
 
-  /* ===================== UI ===================== */
   return (
     <div style={{ minHeight: "100vh", background: theme.bg, color: theme.text }}>
-      <div style={{ maxWidth: 1100, margin: "auto", padding: 20 }}>
-        <h1>Manutenção e Controle – Sala de Válvulas OW</h1>
+      <div style={{ maxWidth: 1200, margin: "auto", padding: 20 }}>
+        {/* HEADER */}
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
+          <h1
+            style={{
+              fontSize: 32,
+              background: theme.metallic,
+              WebkitBackgroundClip: "text",
+              color: "transparent",
+            }}
+          >
+            Manutenção e Controle – Sala de Válvulas OW
+          </h1>
+          <div style={{ fontSize: 40 }}>🍺🔧</div>
+          <p style={{ color: theme.muted }}>
+            Gestão técnica de manutenção em sistemas de envase cervejeiro
+          </p>
+        </div>
 
-        {/* FILTRO VÁLVULA */}
-        <select
-          style={select}
-          onChange={(e) => setValvulaSelecionada(Number(e.target.value))}
-          value={valvulaSelecionada || ""}
-        >
-          <option value="">Selecione a válvula (512)</option>
-          {linha512.map((v) => (
-            <option key={v.numero} value={v.numero}>
-              Válvula {v.numero}
-            </option>
-          ))}
-        </select>
+        {/* DASHBOARD */}
+        {!valvula && (
+          <div style={{ display: "flex", gap: 12, marginBottom: 30 }}>
+            <DashBox color={theme.red} label="Preventivas pendentes" value={dash.red} />
+            <DashBox color={theme.yellow} label="Com corretiva" value={dash.yellow} />
+            <DashBox color={theme.green} label="Preventivas em dia" value={dash.green} />
+          </div>
+        )}
 
-        {/* CARD DA VÁLVULA */}
-        {valvulaSelecionada && (
+        {/* INPUT */}
+        <input
+          type="number"
+          placeholder="Digite o número da válvula (1–175)"
+          min={1}
+          max={175}
+          value={valvula}
+          onChange={(e) => setValvula(e.target.value)}
+          style={input}
+        />
+
+        {/* CARD */}
+        {valvula >= 1 && valvula <= 175 && (
           <div
             style={{
               background: theme.card,
-              border: `2px solid ${statusValvula(
-                linha512[valvulaSelecionada - 1]
-              )}`,
-              borderRadius: 12,
+              border: `2px solid ${corValvula(linha[valvula - 1])}`,
+              borderRadius: 14,
               padding: 16,
               marginTop: 20,
             }}
           >
-            <h2>Válvula {valvulaSelecionada}</h2>
-
+            <h2>Válvula {valvula}</h2>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {SUBCONJUNTOS_512.map((s) => (
+              {SUBS_512.map((s) => (
                 <button
                   key={s}
-                  onClick={() => {
-                    setSubSelecionado(s);
-                    setModal(true);
-                  }}
+                  onClick={() => setModal(s)}
                   style={{
-                    padding: "10px 16px",
+                    padding: "10px 18px",
                     borderRadius: 10,
                     border: "none",
-                    background: statusSubColor(
-                      linha512[valvulaSelecionada - 1].subconjuntos[s].status
-                    ),
-                    color: "#022c22",
+                    background: corSub(linha[valvula - 1].subs[s].status),
                     fontWeight: "bold",
                   }}
                 >
@@ -239,56 +234,24 @@ export default function App() {
           <div style={overlay}>
             <div style={modalStyle}>
               <h3>
-                Subconjunto {subSelecionado?.toUpperCase()} — Válvula{" "}
-                {valvulaSelecionada}
+                Válvula {valvula} · {modal.toUpperCase()}
               </h3>
 
-              <select
-                style={input}
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value)}
-              >
+              <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={input}>
                 <option value="preventiva">Preventiva</option>
                 <option value="corretiva">Corretiva</option>
               </select>
 
-              <input
-                type="date"
-                style={input}
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-              />
-
-              <input
-                placeholder="Responsável"
-                style={input}
-                value={responsavel}
-                onChange={(e) => setResponsavel(e.target.value)}
-              />
-
-              <textarea
-                placeholder="Descrição da manutenção"
-                style={{ ...input, height: 80 }}
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-              />
+              <input type="date" value={data} onChange={(e) => setData(e.target.value)} style={input} />
+              <input placeholder="Responsável" value={resp} onChange={(e) => setResp(e.target.value)} style={input} />
+              <textarea placeholder="Descrição" value={desc} onChange={(e) => setDesc(e.target.value)} style={{ ...input, height: 80 }} />
 
               {erro && <p style={{ color: theme.red }}>{erro}</p>}
               {msg && <p style={{ color: theme.green }}>{msg}</p>}
 
               <div style={{ display: "flex", gap: 10 }}>
-                <button style={btnSave} onClick={salvar}>
-                  Salvar
-                </button>
-                <button
-                  style={btnCancel}
-                  onClick={() => {
-                    setModal(false);
-                    setErro("");
-                  }}
-                >
-                  Cancelar
-                </button>
+                <button onClick={salvar} style={btnSave}>Salvar</button>
+                <button onClick={() => setModal(null)} style={btnCancel}>Cancelar</button>
               </div>
             </div>
           </div>
@@ -296,9 +259,9 @@ export default function App() {
 
         {/* HISTÓRICO */}
         <h2 style={{ marginTop: 40 }}>Histórico</h2>
-        {historico.map((h) => (
+        {hist.map((h) => (
           <div key={h.id} style={histItem}>
-            Linha 512 · V{h.valvula} · {h.subconjunto} · {h.tipo}
+            V{h.valvula} · {h.subconjunto} · {h.tipo}
             <br />
             {h.data} · {h.responsavel}
             <div>{h.descricao}</div>
@@ -309,18 +272,18 @@ export default function App() {
   );
 }
 
-/* ===================== STYLES ===================== */
-const select = {
-  padding: 10,
-  borderRadius: 8,
-  background: "#1f2933",
-  color: "#e5e7eb",
-  border: "1px solid #475569",
-};
+/* ===================== COMPONENTS ===================== */
+const DashBox = ({ color, label, value }) => (
+  <div style={{ flex: 1, background: "#2f3b46", borderRadius: 12, padding: 16, border: `2px solid ${color}` }}>
+    <div style={{ fontSize: 28, fontWeight: "bold", color }}>{value}</div>
+    <div style={{ color: "#9ca3af" }}>{label}</div>
+  </div>
+);
 
+/* ===================== STYLES ===================== */
 const input = {
   width: "100%",
-  padding: 10,
+  padding: 12,
   borderRadius: 8,
   background: "#1f2933",
   color: "#e5e7eb",
@@ -333,7 +296,6 @@ const btnSave = {
   padding: 10,
   borderRadius: 8,
   background: "#22c55e",
-  color: "#022c22",
   fontWeight: "bold",
   border: "none",
 };
@@ -355,7 +317,6 @@ const overlay = {
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 1000,
 };
 
 const modalStyle = {
