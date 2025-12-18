@@ -1,12 +1,21 @@
-function App() {
+export default function App() {
   return (
     <div style={{ padding: "20px", fontFamily: "Arial" }}>
-      <h1>App de Monitoramento de Válvulas</h1>
+      <h1>Painel de Monitoramento de Válvulas</h1>
+
       <p>
-        Sistema de registro e histórico de manutenção de válvulas industriais.
+        Sistema gerencial para registro, histórico e análise de falhas
+        em válvulas industriais.
       </p>
+
+      <hr />
+
+      <h2>Status Geral</h2>
+      <ul>
+        <li>Linhas monitoradas: 3</li>
+        <li>Válvulas cadastradas: 0</li>
+        <li>Falhas registradas: 0</li>
+      </ul>
     </div>
   );
 }
-
-export default App;
