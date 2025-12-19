@@ -17,7 +17,10 @@ export default function App() {
 
   const [tipo, setTipo] = useState(null); // preventiva | corretiva
   const [linha, setLinha] = useState(null);
-  const [valvula, setValvula] = useState("");
+
+  const [valvulaDigitada, setValvulaDigitada] = useState("");
+  const [valvula, setValvula] = useState(null);
+
   const [subsState, setSubsState] = useState({});
   const [toast, setToast] = useState("");
 
@@ -41,12 +44,13 @@ export default function App() {
   }, [historico]);
 
   /* HELPERS */
-  const key = `${linha}-${valvula}`;
+  const key = linha && valvula ? `${linha}-${valvula}` : null;
 
   const resetAll = () => {
     setTipo(null);
     setLinha(null);
-    setValvula("");
+    setValvula(null);
+    setValvulaDigitada("");
     setSubsState({});
     setResp("");
     setDesc("");
@@ -65,12 +69,13 @@ export default function App() {
       return;
     }
 
-    const novo = {
-      preventiva: Date.now(),
-      teveCorretiva: dados[key]?.teveCorretiva || false
-    };
-
-    setDados({ ...dados, [key]: novo });
+    setDados({
+      ...dados,
+      [key]: {
+        preventiva: Date.now(),
+        teveCorretiva: dados[key]?.teveCorretiva || false
+      }
+    });
 
     setHistorico([
       {
@@ -116,6 +121,16 @@ export default function App() {
     setTimeout(resetAll, 1800);
   };
 
+  /* CONFIRMAR VÁLVULA */
+  const confirmarValvula = () => {
+    const num = Number(valvulaDigitada);
+    if (num >= 1 && num <= LINHAS[linha].total) {
+      setValvula(num);
+    } else {
+      alert("Número de válvula inválido");
+    }
+  };
+
   /* UI */
   return (
     <div style={styles.app}>
@@ -126,8 +141,12 @@ export default function App() {
       {/* ETAPA 1 */}
       {!tipo && (
         <div style={styles.row}>
-          <button onClick={() => setTipo("preventiva")} style={styles.btnGreen}>Preventiva</button>
-          <button onClick={() => setTipo("corretiva")} style={styles.btnYellow}>Corretiva</button>
+          <button onClick={() => setTipo("preventiva")} style={styles.btnGreen}>
+            Preventiva
+          </button>
+          <button onClick={() => setTipo("corretiva")} style={styles.btnYellow}>
+            Corretiva
+          </button>
         </div>
       )}
 
@@ -141,18 +160,29 @@ export default function App() {
         </select>
       )}
 
-      {/* ETAPA 3 */}
+      {/* ETAPA 3 – DIGITAR VÁLVULA */}
       {linha && !valvula && (
-        <input
-          type="number"
-          placeholder={`Digite a válvula (1–${LINHAS[linha].total})`}
-          onChange={e => setValvula(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && e.target.blur()}
-          style={styles.input}
-        />
+        <>
+          <input
+            type="number"
+            placeholder={`Digite a válvula (1–${LINHAS[linha].total})`}
+            value={valvulaDigitada}
+            onChange={e => setValvulaDigitada(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                confirmarValvula();
+                e.target.blur();
+              }
+            }}
+            style={styles.input}
+          />
+          <button onClick={confirmarValvula} style={styles.btnBlue}>
+            Confirmar válvula
+          </button>
+        </>
       )}
 
-      {/* ETAPA 4 */}
+      {/* ETAPA 4 – VÁLVULA */}
       {valvula && (
         <div style={styles.card}>
           <h3>Válvula {valvula} – Linha {linha}</h3>
@@ -184,7 +214,6 @@ export default function App() {
             </div>
           )}
 
-          {/* FORM */}
           <input
             placeholder="Responsável"
             value={resp}
@@ -211,10 +240,24 @@ export default function App() {
         <div style={styles.modal}>
           <div style={styles.modalBox}>
             <h3>Corretiva – {modalSub}</h3>
-            <input placeholder="Responsável" value={resp} onChange={e=>setResp(e.target.value)} style={styles.input}/>
-            <textarea placeholder="Descrição" value={desc} onChange={e=>setDesc(e.target.value)} style={styles.textarea}/>
-            <button onClick={salvarCorretiva} style={styles.btnYellow}>Salvar</button>
-            <button onClick={()=>setModalSub(null)} style={styles.btnRed}>Cancelar</button>
+            <input
+              placeholder="Responsável"
+              value={resp}
+              onChange={e => setResp(e.target.value)}
+              style={styles.input}
+            />
+            <textarea
+              placeholder="Descrição"
+              value={desc}
+              onChange={e => setDesc(e.target.value)}
+              style={styles.textarea}
+            />
+            <button onClick={salvarCorretiva} style={styles.btnYellow}>
+              Salvar
+            </button>
+            <button onClick={() => setModalSub(null)} style={styles.btnRed}>
+              Cancelar
+            </button>
           </div>
         </div>
       )}
@@ -268,6 +311,7 @@ const styles = {
   btnGreen: { background: "#22c55e", padding: 12, borderRadius: 8 },
   btnYellow: { background: "#eab308", padding: 12, borderRadius: 8 },
   btnRed: { background: "#ef4444", padding: 12, borderRadius: 8 },
+  btnBlue: { background: "#3b82f6", padding: 12, borderRadius: 8 },
   toast: {
     position: "fixed",
     top: 10,
