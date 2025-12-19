@@ -15,26 +15,23 @@ export default function App() {
   const [dados, setDados] = useState({});
   const [historico, setHistorico] = useState([]);
 
-  const [tipo, setTipo] = useState(null); // preventiva | corretiva
-  const [linha, setLinha] = useState(null);
-
+  const [tipo, setTipo] = useState(null);      // null | "preventiva" | "corretiva"
+  const [linha, setLinha] = useState(null);    // 512 | 513 | 514
   const [valvulaDigitada, setValvulaDigitada] = useState("");
   const [valvula, setValvula] = useState(null);
 
   const [subsState, setSubsState] = useState({});
-  const [toast, setToast] = useState("");
-
   const [modalSub, setModalSub] = useState(null);
   const [resp, setResp] = useState("");
   const [desc, setDesc] = useState("");
+  const [toast, setToast] = useState("");
 
-  /* LOAD */
+  /* ================= LOAD/SAVE ================= */
   useEffect(() => {
     setDados(JSON.parse(localStorage.getItem(STORAGE)) || {});
     setHistorico(JSON.parse(localStorage.getItem(HIST)) || []);
   }, []);
 
-  /* SAVE */
   useEffect(() => {
     localStorage.setItem(STORAGE, JSON.stringify(dados));
   }, [dados]);
@@ -43,7 +40,36 @@ export default function App() {
     localStorage.setItem(HIST, JSON.stringify(historico));
   }, [historico]);
 
-  /* HELPERS */
+  /* ================= HISTORY (BOTÃO VOLTAR) ================= */
+  // Cada avanço de etapa empilha um estado
+  useEffect(() => {
+    const stage =
+      valvula ? "valvula" :
+      linha ? "linha" :
+      tipo ? "tipo" : "inicio";
+    window.history.pushState({ stage }, "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tipo, linha, valvula]);
+
+  // Ao apertar Voltar
+  useEffect(() => {
+    const onPop = () => {
+      if (valvula) {
+        setValvula(null);
+        setValvulaDigitada("");
+      } else if (linha) {
+        setLinha(null);
+      } else if (tipo) {
+        setTipo(null);
+      } else {
+        // na tela inicial, deixa sair do app
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [tipo, linha, valvula]);
+
+  /* ================= HELPERS ================= */
   const key = linha && valvula ? `${linha}-${valvula}` : null;
 
   const resetAll = () => {
@@ -54,74 +80,15 @@ export default function App() {
     setSubsState({});
     setResp("");
     setDesc("");
+    setModalSub(null);
   };
 
-  /* TOAST */
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(""), 2000);
   };
 
-  /* PREVENTIVA */
-  const salvarPreventiva = () => {
-    if (!resp) {
-      alert("Responsável é obrigatório");
-      return;
-    }
-
-    setDados({
-      ...dados,
-      [key]: {
-        preventiva: Date.now(),
-        teveCorretiva: dados[key]?.teveCorretiva || false
-      }
-    });
-
-    setHistorico([
-      {
-        tipo: "preventiva",
-        linha,
-        valvula,
-        responsavel: resp,
-        descricao: desc,
-        data: new Date().toLocaleString("pt-BR")
-      },
-      ...historico
-    ]);
-
-    showToast("Preventiva salva");
-  };
-
-  /* CORRETIVA */
-  const salvarCorretiva = () => {
-    if (!resp || !desc) {
-      alert("Responsável e descrição são obrigatórios");
-      return;
-    }
-
-    setDados({
-      ...dados,
-      [key]: { ...dados[key], teveCorretiva: true }
-    });
-
-    setHistorico([
-      {
-        tipo: "corretiva",
-        linha,
-        valvula,
-        subconjunto: modalSub,
-        responsavel: resp,
-        descricao: desc,
-        data: new Date().toLocaleString("pt-BR")
-      },
-      ...historico
-    ]);
-
-    showToast("Corretiva registrada com sucesso");
-    setTimeout(resetAll, 1800);
-  };
-
-  /* CONFIRMAR VÁLVULA */
+  /* ================= AÇÕES ================= */
   const confirmarValvula = () => {
     const num = Number(valvulaDigitada);
     if (num >= 1 && num <= LINHAS[linha].total) {
@@ -131,7 +98,46 @@ export default function App() {
     }
   };
 
-  /* UI */
+  const salvarPreventiva = () => {
+    if (!resp) {
+      alert("Responsável é obrigatório");
+      return;
+    }
+    setDados({
+      ...dados,
+      [key]: {
+        preventiva: Date.now(),
+        teveCorretiva: dados[key]?.teveCorretiva || false
+      }
+    });
+    setHistorico([
+      { tipo: "preventiva", linha, valvula, responsavel: resp, descricao: desc,
+        data: new Date().toLocaleString("pt-BR") },
+      ...historico
+    ]);
+    showToast("Preventiva salva");
+  };
+
+  const salvarCorretiva = () => {
+    if (!resp || !desc) {
+      alert("Responsável e descrição são obrigatórios");
+      return;
+    }
+    setDados({
+      ...dados,
+      [key]: { ...dados[key], teveCorretiva: true }
+    });
+    setHistorico([
+      { tipo: "corretiva", linha, valvula, subconjunto: modalSub,
+        responsavel: resp, descricao: desc,
+        data: new Date().toLocaleString("pt-BR") },
+      ...historico
+    ]);
+    showToast("Corretiva registrada com sucesso");
+    setTimeout(resetAll, 1800);
+  };
+
+  /* ================= UI ================= */
   return (
     <div style={styles.app}>
       {toast && <div style={styles.toast}>{toast}</div>}
@@ -141,10 +147,10 @@ export default function App() {
       {/* ETAPA 1 */}
       {!tipo && (
         <div style={styles.row}>
-          <button onClick={() => setTipo("preventiva")} style={styles.btnGreen}>
+          <button style={styles.btnGreen} onClick={() => setTipo("preventiva")}>
             Preventiva
           </button>
-          <button onClick={() => setTipo("corretiva")} style={styles.btnYellow}>
+          <button style={styles.btnYellow} onClick={() => setTipo("corretiva")}>
             Corretiva
           </button>
         </div>
@@ -152,7 +158,7 @@ export default function App() {
 
       {/* ETAPA 2 */}
       {tipo && !linha && (
-        <select onChange={e => setLinha(Number(e.target.value))} style={styles.input}>
+        <select style={styles.input} onChange={e => setLinha(Number(e.target.value))}>
           <option value="">Selecione a linha</option>
           <option value="512">Linha 512</option>
           <option value="513">Linha 513</option>
@@ -160,7 +166,7 @@ export default function App() {
         </select>
       )}
 
-      {/* ETAPA 3 – DIGITAR VÁLVULA */}
+      {/* ETAPA 3 */}
       {linha && !valvula && (
         <>
           <input
@@ -176,13 +182,13 @@ export default function App() {
             }}
             style={styles.input}
           />
-          <button onClick={confirmarValvula} style={styles.btnBlue}>
+          <button style={styles.btnBlue} onClick={confirmarValvula}>
             Confirmar válvula
           </button>
         </>
       )}
 
-      {/* ETAPA 4 – VÁLVULA */}
+      {/* ETAPA 4 */}
       {valvula && (
         <div style={styles.card}>
           <h3>Válvula {valvula} – Linha {linha}</h3>
@@ -228,7 +234,7 @@ export default function App() {
           />
 
           {tipo === "preventiva" && (
-            <button onClick={salvarPreventiva} style={styles.btnGreen}>
+            <button style={styles.btnGreen} onClick={salvarPreventiva}>
               Salvar preventiva
             </button>
           )}
@@ -252,10 +258,10 @@ export default function App() {
               onChange={e => setDesc(e.target.value)}
               style={styles.textarea}
             />
-            <button onClick={salvarCorretiva} style={styles.btnYellow}>
+            <button style={styles.btnYellow} onClick={salvarCorretiva}>
               Salvar
             </button>
-            <button onClick={() => setModalSub(null)} style={styles.btnRed}>
+            <button style={styles.btnRed} onClick={() => setModalSub(null)}>
               Cancelar
             </button>
           </div>
@@ -271,71 +277,40 @@ const styles = {
     minHeight: "100vh",
     background: "linear-gradient(135deg,#1f2933,#2b3640,#1c232b)",
     padding: 20,
-    color: "#e5e7eb"
+    color: "#e5e7eb",
+    boxSizing: "border-box"
   },
-  title: {
-    textAlign: "center",
-    marginBottom: 20
-  },
+  title: { textAlign: "center", marginBottom: 20 },
   row: { display: "flex", gap: 10, justifyContent: "center" },
   input: {
-    width: "100%",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 10
+    width: "100%", padding: 12, borderRadius: 8, marginBottom: 10,
+    boxSizing: "border-box"
   },
   textarea: {
-    width: "100%",
-    padding: 12,
-    borderRadius: 8,
-    minHeight: 80,
-    marginBottom: 10
+    width: "100%", padding: 12, borderRadius: 8, minHeight: 80,
+    marginBottom: 10, boxSizing: "border-box"
   },
-  card: {
-    background: "#2f3b46",
-    padding: 16,
-    borderRadius: 12
-  },
+  card: { background: "#2f3b46", padding: 16, borderRadius: 12 },
   subGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit,minmax(80px,1fr))",
-    gap: 8,
-    marginBottom: 12
+    gap: 8, marginBottom: 12
   },
-  subBtn: {
-    padding: 12,
-    borderRadius: 10,
-    color: "#fff",
-    border: "none"
-  },
+  subBtn: { padding: 12, borderRadius: 10, color: "#fff", border: "none" },
   btnGreen: { background: "#22c55e", padding: 12, borderRadius: 8 },
   btnYellow: { background: "#eab308", padding: 12, borderRadius: 8 },
   btnRed: { background: "#ef4444", padding: 12, borderRadius: 8 },
   btnBlue: { background: "#3b82f6", padding: 12, borderRadius: 8 },
   toast: {
-    position: "fixed",
-    top: 10,
-    left: "50%",
-    transform: "translateX(-50%)",
-    background: "#22c55e",
-    color: "#000",
-    padding: 10,
-    borderRadius: 8,
-    zIndex: 999
+    position: "fixed", top: 10, left: "50%", transform: "translateX(-50%)",
+    background: "#22c55e", color: "#000", padding: 10, borderRadius: 8, zIndex: 999
   },
   modal: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,.6)",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center"
+    position: "fixed", inset: 0, background: "rgba(0,0,0,.6)",
+    display: "flex", justifyContent: "center", alignItems: "center"
   },
   modalBox: {
-    background: "#1f2933",
-    padding: 20,
-    borderRadius: 12,
-    width: "100%",
-    maxWidth: 400
+    background: "#1f2933", padding: 20, borderRadius: 12,
+    width: "100%", maxWidth: 400
   }
 };
